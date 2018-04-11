@@ -4,6 +4,8 @@
 #include <RFID.h>
 #include <LiquidCrystal.h>
 LiquidCrystal lcd(12,11,5,4,3,2);
+const int trigPin = 22;
+const int echoPin = 23;
 const int turnMotor1 = 12;
 const int turnMotor2 = 11;
 const int upDownMotor1 = 10;
@@ -26,7 +28,8 @@ int parkingFloor;
 int parkingSpot;
 int openSpot;
 int RFIDValue;
-char status[] = "Welcome to RoboPark";
+long duration;
+int distance;
 RFID RC522(SDA1, RESET); 
 void turn(int angle){
   potValue = map(analogRead(pot),0,1023,0,270);
@@ -83,6 +86,16 @@ void second(){
   digitalWrite(upDownMotor2,LOW);
   floorNumber=2;
 }
+int ultra(){
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance= duration*0.034/2;
+  return distance;
+}
 void goHome(){
   turn(0);
   Serial.println("turned");
@@ -93,15 +106,22 @@ void survey(){
   first();
   delay(1000);
   turn(90);
+  Serial.println(ultra());
   delay(1000);
   turn(180);
+  Serial.println(ultra());
   delay(1000);
   turn(270);
+  Serial.println(ultra());
+  delay(1000);
   second();
+  Serial.println(ultra());
   delay(1000);
   turn(180);
+  Serial.println(ultra());
   delay(1000);
   turn(90);
+  Serial.println(ultra());
   delay(1000);
   turn(0);
   delay(1000);
@@ -159,10 +179,11 @@ int findRFID(int r){
   }
   return -1;
 }
-void lcdUpdate(){
-  lcd.setCursor(0,1);
+void lcdUpdate(char firstLine[], char secondLine[]){
+  lcd.clear();
+  lcd.setCursor(0,0);
   lcd.print("Level 1: ");
-  lcd.setCursor(9,1);
+  lcd.setCursor(9,0);
   lcd.print("1:");
   lcd.print(occupied[0]);
   lcd.print(" 2:");
@@ -170,9 +191,9 @@ void lcdUpdate(){
   lcd.print(" 3:");
   lcd.print(occupied[2]);
   
-  lcd.setCursor(0,2);
+  lcd.setCursor(0,1);
   lcd.print("Level 2: ");
-  lcd.setCursor(9,2);
+  lcd.setCursor(9,1);
   lcd.print("1:");
   lcd.print(occupied[3]);
   lcd.print(" 2:");
@@ -181,9 +202,22 @@ void lcdUpdate(){
   lcd.print(occupied[5]);
   lcd.setCursor(0,2);
   
-  lcd.setCursor(0,3);
+  lcd.setCursor(0,2);
   lcd.print("Status: ");
-  lcd.print(status);
+  lcd.print(firstLine);
+  lcd.setCursor(7,3);
+  lcd.print(secondLine);
+}
+void lcdStatus(char firstLine[], char secondLine[], char thirdLine[], char fourthLine[]){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(firstLine);
+  lcd.setCursor(0,1);
+  lcd.print(secondLine);
+  lcd.setCursor(0,2);
+  lcd.print(thirdLine);
+  lcd.setCursor(0,3);
+  lcd.print(fourthLine);
 }
 void setup() {
   // put your setup code here, to run once
@@ -191,10 +225,9 @@ void setup() {
   digitalWrite(12,LOW);
   Serial.begin(9600);
   lcd.begin(20,4);
-  lcd.setCursor(1,0);
-  lcd.print("Parking Garage");
-  lcd.setCursor(2,0);
-  lcd.print("Setup...");
+  lcdStatus("Parking Garage","Setup...","","");
+  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
+  pinMode(echoPin, INPUT);
   pinMode(turnMotor1,OUTPUT);
   pinMode(turnMotor2,OUTPUT);
   pinMode(upDownMotor1,OUTPUT);
@@ -216,17 +249,13 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  status = "Setup Done";
-  lcdUpdate();
+  lcdUpdate("Drive Up or...","Scan RFID Card");
   if (RC522.isCard() || digitalRead(trigger)){
     if (digitalRead(trigger)){
-      status = "Please wait...";
-      lcdUpdate();
+      lcdUpdate("Please wait...","");
       openSpot = findOpenSpot();
       if (openSpot==-1){
-        status="NO OPEN PARKING";
-        lcdUpdate();
+        lcdStatus("ERROR:","No Parking","","");
       }
       else{
         if (openSpot<3){
@@ -237,8 +266,7 @@ void loop() {
         }
         parkingSpot = (openSpot%3+1)*90;
         retrieve(parkingFloor,parkingSpot);
-        status = "Take Card/Drive Up";
-        lcdUpdate();
+        lcdStatus("Take RFID Card.","Drive Onto","Platform.","");
         while (!RC522.isCard())
         {
           
@@ -250,7 +278,7 @@ void loop() {
         {
         occupied[openSpot]=1;
         
-        lcdUpdate();
+        lcdUpdate("Parking Car...","");
         rfidValues[openSpot]=RFIDValue;
         park(parkingFloor,parkingSpot);
         }
@@ -265,15 +293,13 @@ void loop() {
       
       //Serial.print(RC522.serNum[i],HEX); //to print card detail in Hexa Decimal format
       }
-      Serial.println(RFIDValue);
+      //Serial.println(RFIDValue);
       int openSpot = findRFID(RFIDValue);
       if (openSpot==-1){
-        status="ERROR: NO RFID REGISTERED";
-        lcdUpdate();
+        lcdStatus("ERROR:","No RFID Registred","With That Value","");
       }
       else if (occupied[openSpot]<1){
-        status="ERROR: NO CAR IS PARKED HERE";
-        lcdUpdate();
+        lcdStatus("ERROR:","No Car is Parked","Here. Please Scan a","Valid RFID.");
       }
       else{
         if (openSpot<3){
@@ -285,7 +311,6 @@ void loop() {
         parkingSpot = (openSpot%3+1)*90;
         retrieve(parkingFloor,parkingSpot);
         occupied[openSpot]=-1;
-        lcdUpdate();
     }
     }
     
